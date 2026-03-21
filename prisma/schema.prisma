@@ -1,0 +1,134 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- 1. USER & AUTHENTICATION ---
+model User {
+  id            String         @id @default(uuid())
+  namaLengkap   String
+  email         String         @unique
+  password      String
+  role          Role           @default(SISWA)
+  deviceId      String?        @unique
+  progress      UserProgress[]
+  quizAttempts  QuizAttempt[]
+  syncLogs      SyncLog[]
+  createdAt     DateTime       @default(now())
+}
+
+enum Role {
+  ADMIN
+  GURU
+  SISWA
+}
+
+// --- 2. MATERI & KONTEN (ADAPTIVE) ---
+model Module {
+  id                String    @id @default(uuid())
+  judul             String
+  deskripsi         String?
+  levelKesulitan    Int       @default(1)
+  prasyaratModuleId String?
+  contents          Content[]
+  quizzes           Quiz[]
+  meetings          Meeting[]
+}
+
+model Content {
+  id           String         @id @default(uuid())
+  moduleId     String
+  module       Module         @relation(fields: [moduleId], references: [id])
+  tipe         ContentType
+  urlResource  String
+  summaryAi    String?        @db.Text
+  userProgress UserProgress[]
+}
+
+enum ContentType {
+  VIDEO
+  ARTIKEL
+  PDF
+}
+
+// --- 3. ASSESSMENT (SECURE EXAM) ---
+model Quiz {
+  id          String        @id @default(uuid())
+  moduleId    String
+  module      Module        @relation(fields: [moduleId], references: [id])
+  durasiMenit Int
+  questions   Question[]
+  attempts    QuizAttempt[]
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  quizId        String
+  quiz          Quiz     @relation(fields: [quizId], references: [id])
+  pertanyaan    String   @db.Text
+  kategoriTopik String
+  options       Option[]
+}
+
+model Option {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+  teksOpsi   String
+  isCorrect  Boolean  @default(false)
+}
+
+// --- 4. PROGRESS & ANALYTICS ---
+model UserProgress {
+  id           String         @id @default(uuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id])
+  contentId    String
+  content      Content        @relation(fields: [contentId], references: [id])
+  status       ProgressStatus @default(UNREAD)
+  lastAccessed DateTime       @updatedAt
+}
+
+enum ProgressStatus {
+  UNREAD
+  READING
+  COMPLETED
+}
+
+model QuizAttempt {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  quizId            String
+  quiz              Quiz     @relation(fields: [quizId], references: [id])
+  skor              Float
+  jumlahPelanggaran Int      @default(0)
+  finishedAt        DateTime @default(now())
+}
+
+// --- 5. MONITORING & MEETING (SOCKET.IO) ---
+model Meeting {
+  id            String   @id @default(uuid())
+  moduleId      String
+  module        Module   @relation(fields: [moduleId], references: [id])
+  roomIdSocket  String   @unique
+  isLocked      Boolean  @default(false)
+  scheduledAt   DateTime
+}
+
+// --- 6. SINKRONISASI (OFFLINE-FIRST) ---
+model SyncLog {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  lastSyncTimestamp DateTime @default(now())
+  deviceInfo        String?
+}
