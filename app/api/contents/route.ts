@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET() {
   const allContents = await prisma.content.findMany({
     include: { module: true }   
-});
+  });
   return NextResponse.json(allContents);
 }
 
