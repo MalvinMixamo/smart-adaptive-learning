@@ -1,4 +1,7 @@
 "use client";
+if (typeof window !== "undefined") {
+  window.global = window;
+}
 
 import { use } from "react"
 import React, { useEffect, useRef, useState } from "react";
@@ -89,15 +92,18 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
 
         // Dengerin sinyal dari lawan bicara
         channel.bind("signal-event", (data: any) => {
-          if (data.sender !== session?.user?.email) {
-            if (!peerRef.current) {
-              // Jika siswa nerima sinyal guru, buat peer (Non-Initiator)
-              createPeer(s, data.signal);
-            } else {
-              // Jika sudah ada peer, tinggal masukin sinyalnya
-              peerRef.current.signal(data.signal);
+            console.log("SINYAL MASUK DARI:", data.sender);
+            console.log("SINYAL DATA:", data.signal); // Cek apakah ini muncul di console F12
+
+            if (data.sender !== session?.user?.email) {
+                if (!peerRef.current) {
+                console.log("Membuat Peer Baru (Receiver)");
+                createPeer(s, data.signal);
+                } else {
+                console.log("Menyambungkan Sinyal ke Peer Ada");
+                peerRef.current.signal(data.signal);
+                }
             }
-          }
         });
 
         // Dengerin event lockdown
