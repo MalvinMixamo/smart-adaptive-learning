@@ -15,6 +15,7 @@ import { channel } from "diagnostics_channel";
 
 let pusherClient: Pusher | null = null;
 
+
 const getPusherClient = () => {
   if (!pusherClient) {
     pusherClient = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
@@ -28,6 +29,7 @@ const getPusherClient = () => {
 export default function MeetingPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { data: session } = useSession();
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [streamReady, setStreamReady] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [micActive, setMicActive] = useState(true);
   const [videoActive, setVideoActive] = useState(true);
@@ -41,41 +43,33 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   const [roomId, setRoomId] = useState<string | null>(null);
   const isGuru = session?.user?.role === "GURU";
   useEffect(() => {
-    // Membuka kado params
-    params.then((p: any) => setRoomId(p.roomId));
-  }, [params]);
+      // Membuka kado params
+      params.then((p: any) => setRoomId(p.roomId));
+    }, [params]);
 
-  // FUNGSI UTAMA WEBRTC (Salaman Video)
-  const createPeer = (currentStream: MediaStream, incomingSignal?: any) => {
+    // FUNGSI UTAMA WEBRTC (Salaman Video)
+    const createPeer = (currentStream: MediaStream, incomingSignal?: any) => {
+    // JANGAN LANJUT KALAU STREAM BELUM ADA
+    if (!currentStream) return null;
+
     const peer = new Peer({
-    initiator: isGuru && !incomingSignal,
-    trickle: false,
-    stream: currentStream,
-    config: {
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" }, // STUN Server Google (Gratis)
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-      ],
-    },
-  });
+      initiator: isGuru && !incomingSignal,
+      trickle: false,
+      stream: currentStream,
+      config: {
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      },
+    });
 
     peer.on("signal", async (data) => {
-      // Kirim sinyal balik via Pusher API
       await fetch("/api/meeting/signal", {
         method: "POST",
-        body: JSON.stringify({ 
-            roomId: roomId, 
-            signal: data, 
-            sender: session?.user?.email 
-        }),
+        body: JSON.stringify({ roomId, signal: data, sender: session?.user?.email }),
       });
     });
 
     peer.on("stream", (remoteStream) => {
-      if (remoteVideo.current) {
-        remoteVideo.current.srcObject = remoteStream;
-      }
+      if (remoteVideo.current) remoteVideo.current.srcObject = remoteStream;
     });
 
     peerRef.current = peer;
@@ -83,71 +77,45 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   };
 
   useEffect(() => {
-    if (!roomId || !session?.user?.email) return;
+  if (!roomId || !session?.user?.email) return;
 
-    let currentStream: MediaStream;
+  // AMBIL KAMERA DULU
+  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    .then((s) => {
+      setStream(s);
+      setStreamReady(true); // TANDAI KAMERA SUDAH SIAP
+      if (myVideo.current) myVideo.current.srcObject = s;
 
-    // 1. Ambil Kamera
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then((s) => {
-        currentStream = s;
-        setStream(s);
-        if (myVideo.current) myVideo.current.srcObject = s;
+      const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+      });
+      const channel = pusher.subscribe(`room-${roomId}`);
 
-        // 2. Setup Pusher setelah kamera siap
-        const pusher = getPusherClient(); 
-        const channelName = `room-${roomId}`;
-        const channel = pusher.subscribe(channelName);
+      // GURU MULAI DULUAN SETELAH KAMERA SIAP
+      if (isGuru) {
+        createPeer(s);
+      }
 
-        pusher.connection.bind('state_change', (states: any) => {
-          setIsConnected(states.current === 'connected');
-        });
-        pusher.connection.bind('connected', () => {
-          console.log('✅ PUSHER CONNECTED!');
-        });
-
-        // Jika saya Guru, saya buat Peer duluan (Initiator)
-        if (isGuru) {
-          createPeer(s);
-        }
-
-        // Dengerin sinyal dari lawan bicara
-        channel.bind("signal-event", (data: any) => {
+      channel.bind("signal-event", (data: any) => {
         if (data.sender !== session?.user?.email) {
-          
-          // 1. CEK APAKAH PEER SUDAH ADA DAN SUDAH CONNECTED/DESTROYED
-          if (!peerRef.current || peerRef.current.destroyed) {
-            console.log("Membuat Peer Baru (Receiver)");
+          // CEK APAKAH PEER SUDAH STABLE ATAU BELUM
+          const pc = (peerRef.current as any)?._pc;
+          if (pc && pc.signalingState === "stable") return;
+
+          if (!peerRef.current) {
             createPeer(s, data.signal);
           } else {
-            // 2. CEK STATUS PEER SEBELUM TERIMA SINYAL
-            // @ts-ignore
-            const state = peerRef.current._pc.signalingState;
-            
-            // Hanya proses sinyal jika statusnya belum 'stable' (masih proses salaman)
-            if (state !== "stable") {
-              console.log("Menyambungkan Sinyal ke Peer Ada, State:", state);
-              peerRef.current.signal(data.signal);
-            } else {
-              console.log("Sinyal diabaikan karena koneksi sudah Stable");
-            }
+            peerRef.current.signal(data.signal);
           }
         }
       });
+    });
 
-        // Dengerin event lockdown
-        channel.bind("lockdown-event", (data: { isLocked: boolean }) => {
-          setIsLocked(data.isLocked);
-        });
-        return () => {
-          console.log("Cleanup Pusher...");
-          channel.unbind_all();
-          // Sekarang 'pusher' pasti ada karena dideklarasikan di scope yang sama
-          pusher.unsubscribe(channelName); 
-        };
-      });
-        
-      }, [roomId, session]);
+  return () => {
+    peerRef.current?.destroy();
+    // Tambahkan logic disconnect pusher di sini
+  };
+}, [roomId, session]);
 
   // --- CONTROLS ---
   const toggleMic = () => {
