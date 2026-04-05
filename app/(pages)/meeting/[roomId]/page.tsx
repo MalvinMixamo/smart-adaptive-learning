@@ -1,6 +1,8 @@
 "use client";
 if (typeof window !== "undefined") {
-  window.global = window;
+  (window as any).global = window;
+  (window as any).process = { env: {} };
+  (window as any).Buffer = require("buffer").Buffer;
 }
 
 import { use } from "react"
@@ -29,16 +31,17 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   // FUNGSI UTAMA WEBRTC (Salaman Video)
   const createPeer = (currentStream: MediaStream, incomingSignal?: any) => {
     const peer = new Peer({
-      initiator: isGuru && !incomingSignal, // Guru yang mulai duluan
-      trickle: false,
-      stream: currentStream,
-      config: {
-        iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
-          { urls: "stun:stun1.l.google.com:19302" },
-        ],
-      },
-    });
+    initiator: isGuru && !incomingSignal,
+    trickle: false,
+    stream: currentStream,
+    config: {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }, // STUN Server Google (Gratis)
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+      ],
+    },
+  });
 
     peer.on("signal", async (data) => {
       // Kirim sinyal balik via Pusher API
@@ -92,19 +95,27 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
 
         // Dengerin sinyal dari lawan bicara
         channel.bind("signal-event", (data: any) => {
-            console.log("SINYAL MASUK DARI:", data.sender);
-            console.log("SINYAL DATA:", data.signal); // Cek apakah ini muncul di console F12
-
-            if (data.sender !== session?.user?.email) {
-                if (!peerRef.current) {
-                console.log("Membuat Peer Baru (Receiver)");
-                createPeer(s, data.signal);
-                } else {
-                console.log("Menyambungkan Sinyal ke Peer Ada");
-                peerRef.current.signal(data.signal);
-                }
+        if (data.sender !== session?.user?.email) {
+          
+          // 1. CEK APAKAH PEER SUDAH ADA DAN SUDAH CONNECTED/DESTROYED
+          if (!peerRef.current || peerRef.current.destroyed) {
+            console.log("Membuat Peer Baru (Receiver)");
+            createPeer(s, data.signal);
+          } else {
+            // 2. CEK STATUS PEER SEBELUM TERIMA SINYAL
+            // @ts-ignore
+            const state = peerRef.current._pc.signalingState;
+            
+            // Hanya proses sinyal jika statusnya belum 'stable' (masih proses salaman)
+            if (state !== "stable") {
+              console.log("Menyambungkan Sinyal ke Peer Ada, State:", state);
+              peerRef.current.signal(data.signal);
+            } else {
+              console.log("Sinyal diabaikan karena koneksi sudah Stable");
             }
-        });
+          }
+        }
+      });
 
         // Dengerin event lockdown
         channel.bind("lockdown-event", (data: { isLocked: boolean }) => {
