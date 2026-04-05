@@ -11,6 +11,19 @@ import { useSession } from "next-auth/react";
 import Peer from "simple-peer";
 import { Mic, MicOff, Video, VideoOff, Lock, Unlock, PhoneOff, User } from "lucide-react";
 import Pusher from "pusher-js";
+import { channel } from "diagnostics_channel";
+
+let pusherClient: Pusher | null = null;
+
+const getPusherClient = () => {
+  if (!pusherClient) {
+    pusherClient = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+      forceTLS: true,
+    });
+  }
+  return pusherClient;
+};
 
 export default function MeetingPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { data: session } = useSession();
@@ -25,8 +38,12 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   const peerRef = useRef<Peer.Instance | null>(null); // Ref untuk nyimpen koneksi peer
 
   const resolvedParams = use(params);
-  const roomId = resolvedParams.roomId;
+  const [roomId, setRoomId] = useState<string | null>(null);
   const isGuru = session?.user?.role === "GURU";
+  useEffect(() => {
+    // Membuka kado params
+    params.then((p: any) => setRoomId(p.roomId));
+  }, [params]);
 
   // FUNGSI UTAMA WEBRTC (Salaman Video)
   const createPeer = (currentStream: MediaStream, incomingSignal?: any) => {
@@ -78,15 +95,16 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
         if (myVideo.current) myVideo.current.srcObject = s;
 
         // 2. Setup Pusher setelah kamera siap
-        const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
-          cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-        });
+        const pusher = getPusherClient(); 
+        const channelName = `room-${roomId}`;
+        const channel = pusher.subscribe(channelName);
 
         pusher.connection.bind('state_change', (states: any) => {
           setIsConnected(states.current === 'connected');
         });
-
-        const channel = pusher.subscribe(`room-${roomId}`);
+        pusher.connection.bind('connected', () => {
+          console.log('✅ PUSHER CONNECTED!');
+        });
 
         // Jika saya Guru, saya buat Peer duluan (Initiator)
         if (isGuru) {
@@ -121,16 +139,15 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
         channel.bind("lockdown-event", (data: { isLocked: boolean }) => {
           setIsLocked(data.isLocked);
         });
+        return () => {
+          console.log("Cleanup Pusher...");
+          channel.unbind_all();
+          // Sekarang 'pusher' pasti ada karena dideklarasikan di scope yang sama
+          pusher.unsubscribe(channelName); 
+        };
       });
-
-    return () => {
-      const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, { cluster: 'ap1' });
-      pusher.unsubscribe(`room-${roomId}`);
-      pusher.disconnect();
-      peerRef.current?.destroy();
-      stream?.getTracks().forEach(track => track.stop());
-    };
-  }, [roomId, session]);
+        
+      }, [roomId, session]);
 
   // --- CONTROLS ---
   const toggleMic = () => {
