@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
     // 4. KIRIM SINYAL KE PUSHER (Supaya Siswa yang udah stand-by tahu ada room baru)
     // Atau kalau ini buat "Lockdown", trigger-nya di sini:
-    await pusher.trigger(`presence-${roomId}`, "room-created", {
+    await pusher.trigger(`room-${roomId}`, "room-created", {
       roomId: roomId,
       guruName: session.user.name,
     });

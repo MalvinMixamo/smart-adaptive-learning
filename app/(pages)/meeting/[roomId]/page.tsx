@@ -24,6 +24,7 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   const roomId = resolvedParams.roomId;
 
   useEffect(() => {
+    if(!roomId) return
     // 1. Akses Kamera & Mic
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then((s) => {
@@ -41,16 +42,15 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
       setIsConnected(states.current === 'connected');
     });
 
-    const channel = pusher.subscribe(`presence-${roomId}`);
+    const channel = pusher.subscribe(`room-${roomId}`);
 
     channel.bind("lockdown-event", (data: any) => {
       setIsLocked(data.isLocked);
     });
-
     return () => {
-      pusher.unsubscribe(`room-${roomId}`);
-      pusher.disconnect();
-      stream?.getTracks().forEach(track => track.stop());
+        pusher.unsubscribe(`room-${roomId}`);
+        pusher.disconnect(); // INI PENTING BIAR GAK NUMPUK
+        stream?.getTracks().forEach(track => track.stop());
     };
   }, [roomId]);
 
