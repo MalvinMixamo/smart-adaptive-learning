@@ -79,43 +79,69 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   useEffect(() => {
   if (!roomId || !session?.user?.email) return;
 
-  // AMBIL KAMERA DULU
+  let localStream: MediaStream;
+
   navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then((s) => {
+      localStream = s;
       setStream(s);
-      setStreamReady(true); // TANDAI KAMERA SUDAH SIAP
+      setStreamReady(true);
       if (myVideo.current) myVideo.current.srcObject = s;
 
-      const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
-        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
-      });
+      const pusher = getPusherClient();
       const channel = pusher.subscribe(`room-${roomId}`);
 
-      // GURU MULAI DULUAN SETELAH KAMERA SIAP
+      // 1. GURU MEMBERITAHU BAHWA DIA ADA DI ROOM
       if (isGuru) {
+        // Kita tidak langsung buat peer, tapi tunggu sinyal/trigger 
+        // atau biarkan guru memulai sebagai initiator
         createPeer(s);
       }
 
+      // 2. MENDENGARKAN SINYAL
       channel.bind("signal-event", (data: any) => {
-        if (data.sender !== session?.user?.email) {
-          // CEK APAKAH PEER SUDAH STABLE ATAU BELUM
-          const pc = (peerRef.current as any)?._pc;
-          if (pc && pc.signalingState === "stable") return;
+        // Jangan proses sinyal dari diri sendiri
+        if (data.sender === session?.user?.email) return;
 
-          if (!peerRef.current) {
-            createPeer(s, data.signal);
-          } else {
-            peerRef.current.signal(data.signal);
-          }
+        console.log("Sinyal diterima:", data.signal.type || "ICE Candidate");
+
+        if (!peerRef.current) {
+          // Jika belum ada peer, buat satu (Murid biasanya masuk lewat sini)
+          // Jika kita bukan guru dan menerima sinyal, kita adalah responder (initiator: false)
+          const peer = new Peer({
+            initiator: false,
+            trickle: false,
+            stream: s,
+            config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] },
+          });
+
+          peer.on("signal", (signalData) => {
+            fetch("/api/meeting/signal", {
+              method: "POST",
+              body: JSON.stringify({ roomId, signal: signalData, sender: session?.user?.email }),
+            });
+          });
+
+          peer.on("stream", (remoteStream) => {
+            if (remoteVideo.current) remoteVideo.current.srcObject = remoteStream;
+            setIsConnected(true);
+          });
+
+          peer.signal(data.signal);
+          peerRef.current = peer;
+        } else {
+          // Jika peer sudah ada, masukkan sinyal tambahannya
+          peerRef.current.signal(data.signal);
         }
       });
     });
 
   return () => {
     peerRef.current?.destroy();
-    // Tambahkan logic disconnect pusher di sini
+    if (localStream) localStream.getTracks().forEach(track => track.stop());
+    getPusherClient().unsubscribe(`room-${roomId}`);
   };
-}, [roomId, session]);
+}, [roomId, session?.user?.email]);
 
   // --- CONTROLS ---
   const toggleMic = () => {
