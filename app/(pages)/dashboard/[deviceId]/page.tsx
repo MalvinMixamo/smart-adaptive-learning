@@ -1,4 +1,5 @@
 // components/DashboardLayout.tsx
+import GuruMeetingStarter from "@/app/components/MeetingStarter";
 import { LayoutDashboard, BookOpen, Video, BarChart3, Settings } from "lucide-react";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -34,6 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="flex-1 p-8 overflow-y-auto">
         <header className="flex justify-between items-center mb-8">
           <h1 className="text-2xl font-bold">Selamat Datang, Siswa!</h1>
+          <GuruMeetingStarter></GuruMeetingStarter>
           <div className="w-10 h-10 bg-blue-100 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-blue-600 font-bold">S</div>
         </header>
         {children}

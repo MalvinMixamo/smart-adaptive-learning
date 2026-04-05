@@ -21,6 +21,7 @@ model User {
   deviceId      String?        @unique
   progress      UserProgress[]
   quizAttempts  QuizAttempt[]
+  meeting       Meeting[]
   syncLogs      SyncLog[]
   createdAt     DateTime       @default(now())
 }
@@ -31,7 +32,6 @@ enum Role {
   SISWA
 }
 
-// --- 2. MATERI & KONTEN (ADAPTIVE) ---
 model Module {
   id                String    @id @default(uuid())
   judul             String
@@ -59,7 +59,6 @@ enum ContentType {
   PDF
 }
 
-// --- 3. ASSESSMENT (SECURE EXAM) ---
 model Quiz {
   id          String        @id @default(uuid())
   moduleId    String
@@ -86,7 +85,6 @@ model Option {
   isCorrect  Boolean  @default(false)
 }
 
-// --- 4. PROGRESS & ANALYTICS ---
 model UserProgress {
   id           String         @id @default(uuid())
   userId       String
@@ -114,17 +112,18 @@ model QuizAttempt {
   finishedAt        DateTime @default(now())
 }
 
-// --- 5. MONITORING & MEETING (SOCKET.IO) ---
 model Meeting {
   id            String   @id @default(uuid())
+  guruId        String  
+  guru          User     @relation(fields: [guruId], references: [id])
   moduleId      String
   module        Module   @relation(fields: [moduleId], references: [id])
+  roomName      String
   roomIdSocket  String   @unique
   isLocked      Boolean  @default(false)
-  scheduledAt   DateTime
+  scheduledAt   DateTime @default(now())
 }
 
-// --- 6. SINKRONISASI (OFFLINE-FIRST) ---
 model SyncLog {
   id                String   @id @default(uuid())
   userId            String

@@ -1,23 +1,31 @@
-import { prisma } from "@/lib/prisma"
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcrypt";
 
-export async function POST(request: Request){
-    const body = await request.json()
+export async function POST(req: Request) {
+  try {
+    const { email, password, nama, role } = await req.json();
 
-    try{
-        await prisma.user.create({
-            data: {
-                namaLengkap: body.namaLengkap,
-                email: body.email,
-                password: body.password,
-                role: body.role,
-                deviceId: body.deviceId,
-            }
-        })
-
-        return NextResponse.json({message: "berhasil membuat akun"}, {status: 200})
-
-    }catch(err){
-        return NextResponse.json(err, {status: 500})
+    if (!email || !password || !nama) {
+      return NextResponse.json({ error: "Data tidak lengkap" }, { status: 400 });
     }
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return NextResponse.json({ error: "Email sudah digunakan" }, { status: 400 });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await prisma.user.create({
+      data: {
+        email: email.trim().toLowerCase(),
+        password: hashedPassword,
+        namaLengkap: nama,
+        role: role || "SISWA",
+      },
+    });
+
+    return NextResponse.json({ message: "User berhasil dibuat!", userId: newUser.id }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json({ error: "Gagal registrasi" }, { status: 500 });
+  }
 }
