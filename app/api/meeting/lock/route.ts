@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   });
 
   // 2. Kirim sinyal real-time via Pusher
-  await pusher.trigger(`presence-${roomId}`, "lockdown-event", {
+  await pusher.trigger(`room-${roomId}`, "lockdown-event", {
     isLocked: status
   });
 

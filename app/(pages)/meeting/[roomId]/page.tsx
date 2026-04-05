@@ -43,12 +43,12 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
 
     const channel = pusher.subscribe(`presence-${roomId}`);
 
-    channel.bind("lockdown-event", (data: { isLocked: boolean }) => {
+    channel.bind("lockdown-event", (data: any) => {
       setIsLocked(data.isLocked);
     });
 
     return () => {
-      pusher.unsubscribe(`presence-${roomId}`);
+      pusher.unsubscribe(`room-${roomId}`);
       pusher.disconnect();
       stream?.getTracks().forEach(track => track.stop());
     };
