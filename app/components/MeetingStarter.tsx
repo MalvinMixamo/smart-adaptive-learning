@@ -18,7 +18,7 @@ export default function GuruMeetingStarter() {
     const data = await response.json();
     console.log(data)
     // Redirect guru ke halaman meeting yang baru dibuat
-    router.push(`/meeting/${data.roomId}`);
+    router.push(`/meeting/${data.roomIdSocket}`);
   };
 
   return (

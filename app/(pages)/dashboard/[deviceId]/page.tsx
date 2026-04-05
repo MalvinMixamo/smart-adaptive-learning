@@ -1,4 +1,3 @@
-// components/DashboardLayout.tsx
 import GuruMeetingStarter from "@/app/components/MeetingStarter";
 import { LayoutDashboard, BookOpen, Video, BarChart3, Settings } from "lucide-react";
 
