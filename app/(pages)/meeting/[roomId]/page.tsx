@@ -9,7 +9,7 @@ import { use } from "react"
 import React, { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Peer from "simple-peer";
-import { Mic, MicOff, Video, VideoOff, Lock, Unlock, PhoneOff, User } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, Lock, Unlock, PhoneOff, User, BottleWine } from "lucide-react";
 import Pusher from "pusher-js";
 import { channel } from "diagnostics_channel";
 
@@ -34,6 +34,8 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   const [micActive, setMicActive] = useState(true);
   const [videoActive, setVideoActive] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const [remoteName, setRemoteName] = useState('')
+  const [showFloatingControl, setShowFloatingControl] = useState(false)
   
   const myVideo = useRef<HTMLVideoElement>(null);
   const remoteVideo = useRef<HTMLVideoElement>(null);
@@ -102,6 +104,9 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
       channel.bind("signal-event", (data: any) => {
         // Jangan proses sinyal dari diri sendiri
         if (data.sender === session?.user?.email) return;
+        if (data.senderName){
+          setRemoteName(data.senderName)
+        }
 
         console.log("Sinyal diterima:", data.signal.type || "ICE Candidate");
 
@@ -114,11 +119,12 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
             stream: s,
             config: { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] },
           });
+          
 
           peer.on("signal", (signalData) => {
             fetch("/api/meeting/signal", {
               method: "POST",
-              body: JSON.stringify({ roomId, signal: signalData, sender: session?.user?.email }),
+              body: JSON.stringify({ roomId, signal: signalData, sender: session?.user?.email, senderName: session.user.name }),
             });
           });
 
@@ -202,32 +208,58 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className={`relative rounded-3xl overflow-hidden border-2 ${isGuru ? "border-blue-500 shadow-lg" : "border-slate-300"}`}>
           <video ref={isGuru ? myVideo : remoteVideo} autoPlay muted={isGuru} playsInline className="w-full h-full object-cover scale-x-[-1]" />
-          <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-1 rounded-lg text-xs">TEACHER</div>
+          <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-1 rounded-lg text-xs">{myVideo ? "Anda" : remoteName} (TEACHER)</div>
         </div>
 
         <div className={`relative rounded-3xl overflow-hidden border-2 ${!isGuru ? "border-blue-500 shadow-lg" : "border-slate-300"}`}>
           <video ref={!isGuru ? myVideo : remoteVideo} autoPlay muted={!isGuru} playsInline className="w-full h-full object-cover scale-x-[-1]" />
-          <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-1 rounded-lg text-xs">STUDENT</div>
+          <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-1 rounded-lg text-xs">{myVideo ? "Anda" : remoteName} (STUDENT)</div>
         </div>
       </div>
 
-      {/* FLOATING CONTROLS */}
-      <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-2xl px-8 py-5 rounded-[3rem] border shadow-2xl flex gap-6 items-center">
-        <button onClick={toggleMic} className={`p-4 rounded-2xl ${micActive ? "bg-slate-100" : "bg-rose-100 text-rose-600"}`}>
+      {/* FLOATING CONTROLS WRAPPER */}
+      <div className="fixed z-99 bottom-10 left-1/2 -translate-x-1/2 group">
+        
+        {/* TOMBOL PEMANCING (bg-yellow) */}
+        <div className="relative w-40 h-10  rounded-t-lg mx-aut flex items-center justify-center">
+        </div>
+
+        {/* MENU KONTROL (Child) */}
+        <div className="
+          absolute bottom-full left-1/2 -translate-x-1/2 mb-2
+          invisible opacity-0 translate-y-4 
+          group-hover:visible group-hover:opacity-100 group-hover:translate-y-0
+          transition-all duration-300 ease-out
+          bg-white/90 backdrop-blur-2xl px-8 py-3 rounded-[3rem] border shadow-2xl flex gap-6 items-center
+        ">
+          <button 
+          onClick={toggleMic}
+          className={`p-4 rounded-2xl transition-all ${micActive ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-rose-100 text-rose-600"}`}
+        >
           {micActive ? <Mic size={24} /> : <MicOff size={24} />}
         </button>
-        <button onClick={toggleVideo} className={`p-4 rounded-2xl ${videoActive ? "bg-slate-100" : "bg-rose-100 text-rose-600"}`}>
+        
+        <button 
+          onClick={toggleVideo}
+          className={`p-4 rounded-2xl transition-all ${videoActive ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-rose-100 text-rose-600"}`}
+        >
           {videoActive ? <Video size={24} /> : <VideoOff size={24} />}
         </button>
+
         <div className="w-px h-10 bg-slate-200 mx-2" />
-        <button onClick={() => window.location.href = '/dashboard'} className="p-4 bg-rose-500 text-white rounded-2xl">
+
+        <button 
+          onClick={() => window.location.href = '/dashboard'}
+          className="p-4 bg-rose-500 hover:bg-rose-600 hover:rotate-12 text-white rounded-2xl transition-all shadow-lg shadow-rose-200"
+        >
           <PhoneOff size={24} />
         </button>
+        </div>
       </div>
 
       {/* LOCKDOWN OVERLAY */}
       {isLocked && !isGuru && (
-        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-[9999] flex flex-col items-center justify-center text-white">
+        <div className="fixed inset-0 bg-slate-900/95 backdrop-blur-xl z-9999 flex flex-col items-center justify-center text-white">
           <Lock size={100} className="mb-8 text-blue-500 animate-pulse" />
           <h2 className="text-5xl font-black mb-4">FOCUS MODE</h2>
           <p className="text-slate-400 text-lg text-center">Ruangan dikunci oleh Guru.</p>

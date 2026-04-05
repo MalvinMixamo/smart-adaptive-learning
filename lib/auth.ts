@@ -39,7 +39,6 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      // Saat login pertama kali, 'user' ada isinya. Kita titip ID & ROLE ke 'token'
       if (user) {
         token.id = user.id;
         token.role = user.role;
@@ -47,9 +46,9 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      // Setiap kali session dicek, kita ambil ID & ROLE dari 'token' ke 'session'
       if (session.user) {
         (session.user as any).id = token.id;
+        (session.user as any).namaLengkap = token.name;
         (session.user as any).role = token.role;
       }
       return session;
@@ -62,7 +61,7 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
-        secure: false // <--- SET JADI FALSE UNTUK TESTING DI HP (HTTP)
+        secure: false
       }
     }
   },
