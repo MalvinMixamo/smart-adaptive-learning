@@ -2,20 +2,20 @@
 
 import { use } from "react"
 import React, { useEffect, useRef, useState } from "react";
-import { useSocket } from "@/app/provider/socket-provider"; 
 import { useSession } from "next-auth/react"; // Tambahkan ini untuk cek role
 import Peer from "simple-peer";
 import { Mic, MicOff, Video, VideoOff, Lock, Unlock, PhoneOff, User } from "lucide-react";
+import Pusher from "pusher-js";
 
 export default function MeetingPage({ params }: { params: Promise<{ roomId: string }> }) {
   const { data: session } = useSession();
-  const { socket, isConnected } = useSocket();
-  
   // States
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [micActive, setMicActive] = useState(true);
   const [videoActive, setVideoActive] = useState(true);
+  
+  const [isConnected, setIsConnected] = useState(false);
   
   // Refs
   const myVideo = useRef<HTMLVideoElement>(null);
@@ -24,35 +24,35 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
   const roomId = resolvedParams.roomId;
 
   useEffect(() => {
-    // 1. Inisialisasi Media
+    // 1. Akses Kamera & Mic
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then((currentStream) => {
-        setStream(currentStream);
-        if (myVideo.current) myVideo.current.srcObject = currentStream;
-      });
+      .then((s) => {
+        setStream(s);
+        if (myVideo.current) myVideo.current.srcObject = s;
+      }).catch(err => console.error("Kamera error:", err));
 
-    // 2. Socket Listeners
-    if (socket) {
-      socket.emit("join-room", roomId);
+    // 2. Setup Pusher
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+    });
 
-      // Terima sinyal lockdown dari Guru
-      socket.on("lockdown-status", (status: boolean) => {
-        setIsLocked(status);
-      });
-    }
+    // --- LOGIC UNTUK ISCONNECTED ---
+    pusher.connection.bind('state_change', (states: any) => {
+      setIsConnected(states.current === 'connected');
+    });
+
+    const channel = pusher.subscribe(`presence-${roomId}`);
+
+    channel.bind("lockdown-event", (data: { isLocked: boolean }) => {
+      setIsLocked(data.isLocked);
+    });
 
     return () => {
-      socket?.off("lockdown-status");
+      pusher.unsubscribe(`presence-${roomId}`);
+      pusher.disconnect();
       stream?.getTracks().forEach(track => track.stop());
     };
-  }, [socket, roomId]);
-
-  // Tombol Lockdown (Hanya fungsi, UI difilter di bawah)
-  const toggleLockdown = () => {
-    const newStatus = !isLocked;
-    setIsLocked(newStatus);
-    socket?.emit("trigger-lockdown", { roomId: roomId, status: newStatus });
-  };
+  }, [roomId]);
 
   // Toggle Media
   const toggleMic = () => {
@@ -67,6 +67,12 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
       stream.getVideoTracks()[0].enabled = !videoActive;
       setVideoActive(!videoActive);
     }
+  };
+  const handleToggleLock = async () => {
+    await fetch("/api/meeting/lock", {
+      method: "POST",
+      body: JSON.stringify({ roomId: roomId, status: !isLocked }),
+    });
   };
   const isGuru = session?.user?.role === "GURU";
 
@@ -93,7 +99,7 @@ export default function MeetingPage({ params }: { params: Promise<{ roomId: stri
         {/* Tampilkan tombol Lockdown HANYA JIKA ROLE == GURU */}
         {session?.user?.role === "GURU" && (
           <button 
-            onClick={toggleLockdown}
+            onClick={handleToggleLock}
             className={`group flex items-center gap-3 px-6 py-3 rounded-2xl font-bold transition-all duration-300 ${
               isLocked 
               ? "bg-rose-500 text-white shadow-rose-200" 

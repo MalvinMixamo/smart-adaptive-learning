@@ -21,6 +21,8 @@
     "next-auth": "^4.24.13",
     "node-tfidf": "^0.0.2",
     "prisma-client": "^0.0.0",
+    "pusher": "^5.3.3",
+    "pusher-js": "^8.5.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "simple-peer": "^9.11.1",
